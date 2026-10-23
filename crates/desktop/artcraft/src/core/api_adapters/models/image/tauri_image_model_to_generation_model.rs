@@ -31,5 +31,8 @@ pub fn tauri_image_model_to_generation_model(model: TauriImageModel) -> Generati
     TauriImageModel::Flux2LoraAngles => GenerationModel::Flux2LoraAngles,
     TauriImageModel::FluxDevJuggernaut => GenerationModel::FluxDevJuggernaut,
     TauriImageModel::FluxPro1 => GenerationModel::FluxPro1,
+    TauriImageModel::ComfyUiFlux1Schnell => GenerationModel::Flux1Schnell,
+    TauriImageModel::ComfyUiFlux1Dev => GenerationModel::Flux1Dev,
+    TauriImageModel::ComfyUiSdxl => GenerationModel::Unknown("comfyui_sdxl".to_string()),
   }
 }

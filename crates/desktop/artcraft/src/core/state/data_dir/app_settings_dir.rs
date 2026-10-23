@@ -40,6 +40,10 @@ impl AppSettingsDir {
     self.path.join("provider_preferences.json")
   }
 
+  pub fn get_comfyui_settings_path(&self) -> PathBuf {
+    self.path.join("comfyui_settings.json")
+  }
+
   pub fn write_app_preferences(&self, prefs: &AppPreferences) -> AnyhowResult<()> {
     let serializable = prefs.to_serializable();
 

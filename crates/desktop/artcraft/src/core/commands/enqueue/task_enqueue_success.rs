@@ -1,5 +1,6 @@
 use crate::core::events::generation_events::common::{GenerationAction, GenerationModel, GenerationServiceProvider};
 use crate::core::state::task_database::TaskDatabase;
+use crate::core::utils::enum_conversion::generation_provider::to_generation_service_provider;
 use enums::common::generation_provider::GenerationProvider;
 use enums::tauri::tasks::task_model_type::TaskModelType;
 use enums::tauri::tasks::task_status::TaskStatus;
@@ -34,22 +35,7 @@ impl TaskEnqueueSuccess{
   }
   
   pub fn to_frontend_event_service(&self) -> GenerationServiceProvider {
-    match self.provider {
-      GenerationProvider::Artcraft => GenerationServiceProvider::Artcraft,
-      GenerationProvider::Fal => GenerationServiceProvider::Fal,
-      GenerationProvider::Grok => GenerationServiceProvider::Grok,
-      GenerationProvider::Midjourney => GenerationServiceProvider::Midjourney,
-      GenerationProvider::Sora => GenerationServiceProvider::Sora,
-      GenerationProvider::WorldLabs => GenerationServiceProvider::WorldLabs,
-      GenerationProvider::Higgsfield => GenerationServiceProvider::Higgsfield,
-      GenerationProvider::Krea => GenerationServiceProvider::Krea,
-      GenerationProvider::Leonardo => GenerationServiceProvider::Leonardo,
-      GenerationProvider::Magnific => GenerationServiceProvider::Magnific,
-      GenerationProvider::Openart => GenerationServiceProvider::Openart,
-      GenerationProvider::Picsart => GenerationServiceProvider::Picsart,
-      GenerationProvider::Pixverse => GenerationServiceProvider::Pixverse,
-      GenerationProvider::Runway => GenerationServiceProvider::Runway,
-    }
+    to_generation_service_provider(self.provider)
   }
   
   pub async fn insert_into_task_database(&self, task_database: &TaskDatabase) -> Result<TaskId, SqliteTasksError> {

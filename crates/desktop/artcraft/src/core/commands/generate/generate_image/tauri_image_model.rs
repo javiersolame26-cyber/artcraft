@@ -1,3 +1,4 @@
+use comfyui_client::workflows::model_family::ModelFamily;
 use serde_derive::Deserialize;
 
 /// Unified image model enum covering text-to-image, image edit, and inpainting.
@@ -78,4 +79,25 @@ pub enum TauriImageModel {
   FluxDevJuggernaut,
   #[serde(rename = "flux_pro_1")]
   FluxPro1,
+
+  // Local models, run on the user's own ComfyUI server (GenerationProvider::ComfyUi).
+
+  #[serde(rename = "comfyui_flux_1_schnell")]
+  ComfyUiFlux1Schnell,
+  #[serde(rename = "comfyui_flux_1_dev")]
+  ComfyUiFlux1Dev,
+  #[serde(rename = "comfyui_sdxl")]
+  ComfyUiSdxl,
+}
+
+impl TauriImageModel {
+  /// The local ComfyUI checkpoint family for this model, if it is a local model.
+  pub fn comfyui_family(self) -> Option<ModelFamily> {
+    match self {
+      Self::ComfyUiFlux1Schnell => Some(ModelFamily::FluxSchnell),
+      Self::ComfyUiFlux1Dev => Some(ModelFamily::FluxDev),
+      Self::ComfyUiSdxl => Some(ModelFamily::Sdxl),
+      _ => None,
+    }
+  }
 }

@@ -2,6 +2,7 @@ use crate::core::providers::credentials::provider_credential_loading_cache::Prov
 use crate::core::state::app_env_configs::app_env_configs::AppEnvConfigs;
 use crate::core::state::data_dir::app_data_root::AppDataRoot;
 use crate::core::state::task_database::TaskDatabase;
+use crate::core::threads::third_party_task_polling_thread::handlers::comfyui::poll_comfyui_tasks::poll_comfyui_tasks;
 use crate::core::threads::third_party_task_polling_thread::handlers::fal::poll_fal_tasks::poll_fal_tasks;
 use crate::core::utils::task_database_pending_statuses::TASK_DATABASE_PENDING_STATUSES;
 use crate::services::storyteller::state::storyteller_credential_manager::StorytellerCredentialManager;
@@ -16,7 +17,7 @@ use tauri::AppHandle;
 
 const SLEEP_NO_THIRD_PARTY_JOBS_SEEN: Duration = Duration::from_secs(10);
 const SLEEP_THIRD_PARTY_JOBS_SEEN: Duration = Duration::from_secs(2);
-const SLEEP_BETWEEN_FAL_POLLS: Duration = Duration::from_secs(1);
+const SLEEP_BETWEEN_POLLS: Duration = Duration::from_secs(1);
 const SLEEP_ON_ERROR: Duration = Duration::from_secs(30);
 
 pub async fn third_party_task_polling_thread(
@@ -79,39 +80,52 @@ async fn poll_iteration(
     .filter(|t| t.provider == GenerationProvider::Fal)
     .collect();
 
-  let non_fal_tasks: Vec<&Task> = tasks.iter()
-    .filter(|t| t.provider != GenerationProvider::Fal)
+  let comfyui_tasks: Vec<&Task> = tasks.iter()
+    .filter(|t| t.provider == GenerationProvider::ComfyUi)
     .collect();
 
-  if !non_fal_tasks.is_empty() {
-    for task in &non_fal_tasks {
-      warn!(
-        "[ThirdPartyPolling] Skipping non-FAL task: id={}, provider={:?}, type={:?}",
-        task.id.as_str(),
-        task.provider,
-        task.task_type,
-      );
-    }
+  for task in tasks.iter().filter(|t| !matches!(t.provider, GenerationProvider::Fal | GenerationProvider::ComfyUi)) {
+    warn!(
+      "[ThirdPartyPolling] Skipping task without a poller: id={}, provider={:?}, type={:?}",
+      task.id.as_str(),
+      task.provider,
+      task.task_type,
+    );
   }
 
-  if fal_tasks.is_empty() {
+  if fal_tasks.is_empty() && comfyui_tasks.is_empty() {
     tokio::time::sleep(SLEEP_THIRD_PARTY_JOBS_SEEN).await;
     return Ok(());
   }
 
-  info!("[ThirdPartyPolling] {} FAL job(s) ready to check", fal_tasks.len());
+  if !fal_tasks.is_empty() {
+    info!("[ThirdPartyPolling] {} FAL job(s) ready to check", fal_tasks.len());
 
-  poll_fal_tasks(
-    app_handle,
-    app_env_configs,
-    app_data_root,
-    task_database,
-    storyteller_creds_manager,
-    credential_cache,
-    &fal_tasks,
-  ).await;
+    poll_fal_tasks(
+      app_handle,
+      app_env_configs,
+      app_data_root,
+      task_database,
+      storyteller_creds_manager,
+      credential_cache,
+      &fal_tasks,
+    ).await;
+  }
 
-  tokio::time::sleep(SLEEP_BETWEEN_FAL_POLLS).await;
+  if !comfyui_tasks.is_empty() {
+    info!("[ThirdPartyPolling] {} ComfyUI job(s) ready to check", comfyui_tasks.len());
+
+    poll_comfyui_tasks(
+      app_handle,
+      app_env_configs,
+      app_data_root,
+      task_database,
+      storyteller_creds_manager,
+      &comfyui_tasks,
+    ).await;
+  }
+
+  tokio::time::sleep(SLEEP_BETWEEN_POLLS).await;
 
   Ok(())
 }

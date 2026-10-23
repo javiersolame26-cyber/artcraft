@@ -137,6 +137,7 @@ Additional provider integrations are planned for Kling, Google, Runway, and Luma
 ## Documentation
 
 - [Development setup](./_docs/dev_setup.md)
+- [Local generation with ComfyUI](./_docs/local_comfyui.md)
 - [Developer documentation](./_docs)
 - [Desktop build and development scripts](./script/artcraft)
 - [Roadmap](./ROADMAP.md)

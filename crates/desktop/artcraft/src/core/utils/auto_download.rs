@@ -3,7 +3,7 @@ use crate::core::state::app_preferences::app_preferences::AppPreferences;
 use crate::core::state::app_preferences::app_preferences_manager::AppPreferencesManager;
 use crate::core::state::data_dir::app_data_root::AppDataRoot;
 use crate::core::state::data_dir::trait_data_subdir::DataSubdir;
-use crate::core::utils::download_url_to_user_download_dir::{download_url_with_filename, suggested_download_filename};
+use crate::core::utils::download_url_to_user_download_dir::{copy_file_with_filename, download_url_with_filename, suggested_download_filename};
 use crate::services::storyteller::state::storyteller_credential_manager::StorytellerCredentialManager;
 use anyhow::{anyhow, ensure};
 use artcraft_client::endpoints::media_files::list_batch_generated_redux_media_files::list_batch_generated_redux_media_files;
@@ -113,7 +113,13 @@ async fn download_generated_results(
       (urls.len() > 1).then_some(index + 1),
       checkpoint.download_time,
     );
-    let saved = download_url_with_filename(url, &directory, &filename).await?;
+    // Local providers (ComfyUI) hand over results already saved on disk.
+    let saved = if url.scheme() == "file" {
+      let source = url.to_file_path().map_err(|_| anyhow!("Invalid local result path: {}", url))?;
+      copy_file_with_filename(&source, &directory, &filename).await?
+    } else {
+      download_url_with_filename(url, &directory, &filename).await?
+    };
     checkpoint.saved.insert(url.to_string(), saved);
     let mut file = NamedTempFile::new_in(root.state_dir().path())?;
     file.write_all(&serde_json::to_vec(&checkpoint)?)?;
@@ -225,6 +231,27 @@ mod tests {
       std::fs::read_to_string(dir.path().join("chosen/midjourney_8_result_1.png")).unwrap(),
       "second"
     );
+  }
+
+  #[tokio::test]
+  async fn local_results_are_copied_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = AppDataRoot::create_existing(dir.path()).unwrap();
+    let prefs = preferences(&root);
+    let task = task(GenerationProvider::ComfyUi);
+    let source = dir.path().join("comfyui_result_0.png");
+    std::fs::write(&source, "local pixels").unwrap();
+    let url = Url::from_file_path(&source).unwrap();
+
+    download_generated_results(&root, &prefs, &task, &[url.clone()]).await.unwrap();
+    // A retry after a failed upload must not save a second copy.
+    download_generated_results(&root, &prefs, &task, &[url]).await.unwrap();
+
+    assert_eq!(
+      std::fs::read_to_string(dir.path().join("chosen/midjourney_8_result.png")).unwrap(),
+      "local pixels"
+    );
+    assert_eq!(std::fs::read_dir(dir.path().join("chosen")).unwrap().count(), 1);
   }
 
   #[tokio::test]

@@ -35,6 +35,10 @@ use crate::core::commands::providers::deprecated::set_provider_order_command::se
 use crate::core::commands::providers::provider_clear_command::provider_clear_command;
 use crate::core::commands::providers::provider_list_command::provider_list_command;
 use crate::core::commands::providers::provider_set_api_key_command::provider_set_api_key_command;
+use crate::core::commands::providers::comfyui::comfyui_get_settings_command::comfyui_get_settings_command;
+use crate::core::commands::providers::comfyui::comfyui_test_connection_command::comfyui_test_connection_command;
+use crate::core::commands::providers::comfyui::comfyui_update_settings_command::comfyui_update_settings_command;
+use crate::core::state::comfyui_settings::{ComfyUiSettings, ComfyUiSettingsStore};
 use crate::core::commands::task_queue::get_task_queue_command::get_task_queue_command;
 use crate::core::commands::task_queue::mark_task_as_dismissed_command::mark_task_as_dismissed_command;
 use crate::core::commands::task_queue::tasks_nuke_all_command::tasks_nuke_all_command;
@@ -152,6 +156,9 @@ pub fn run() {
   let artcraft_usage_tracker = ArtcraftUsageTracker::new();
   let artcraft_usage_tracker_2 = artcraft_usage_tracker.clone();
 
+  println!("Loading ComfyUI settings...");
+  let comfyui_settings_store = ComfyUiSettingsStore::new(ComfyUiSettings::load_or_default(&app_data_root));
+
   println!("Initializing backend runtime...");
 
   let builder = tauri::Builder::default()
@@ -220,12 +227,16 @@ pub fn run() {
     .manage(storyteller_creds_manager_3)
     .manage(worldlabs_bearer_bridge)
     .manage(provider_credential_cache)
+    .manage(comfyui_settings_store)
     .manage(worldlabs_creds_manager);
 
   // TODO: Break this out into another module, because RustRover/IntelliJ lags with these macros.
   //  My first attempt at naively doing this didn't work because the macros can't find their codegen'd targets.
   let builder = builder.invoke_handler(tauri::generate_handler![
     check_sora_session_command,
+    comfyui_get_settings_command,
+    comfyui_test_connection_command,
+    comfyui_update_settings_command,
     download_directory_reveal_command,
     download_media_file_command,
     download_url_command,

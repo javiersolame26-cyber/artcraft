@@ -7,6 +7,7 @@ use crate::core::commands::enqueue::common::notify_frontend_of_errors::notify_fr
 use crate::core::commands::enqueue::generate_error::{GenerateError, MissingCredentialsReason};
 use crate::core::commands::enqueue::task_enqueue_success::TaskEnqueueSuccess;
 use crate::core::commands::generate::generate_image::providers::artcraft::handle_artcraft;
+use crate::core::commands::generate::generate_image::providers::comfyui::handle_comfyui::handle_comfyui;
 use crate::core::commands::generate::generate_image::providers::artcraft_router::handle_router::handle_router;
 use crate::core::commands::generate::generate_image::tauri_generate_image_request::{
   TauriGenerateImageErrorType, TauriGenerateImageRequest, TauriGenerateImageResponse,
@@ -58,6 +59,9 @@ async fn generate_image_native(
     }
     GenerationProvider::Midjourney => {
       handle_midjourney(&request, &app_env_configs, &app.state(), &storyteller_creds_manager).await
+    }
+    GenerationProvider::ComfyUi => {
+      handle_comfyui(&request, &app.state(), &app_env_configs, &storyteller_creds_manager).await
     }
     // All other providers go through the router.
     other => {
@@ -184,9 +188,14 @@ async fn handle_error_behavior(
     })
    */
 
+  let error_message = match &err {
+    GenerateError::ComfyUi(message) => message.clone(),
+    other => format!("{:?}", other),
+  };
+
   Err(CommandErrorResponseWrapper {
     status: CommandErrorStatus::ServerError,
-    error_message: Some(format!("{:?}", err)),
+    error_message: Some(error_message),
     error_type: Some(error_type),
     error_details: None,
   })

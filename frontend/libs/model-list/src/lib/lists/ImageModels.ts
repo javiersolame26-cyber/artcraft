@@ -8,6 +8,48 @@ import { CommonQuality } from "../classes/properties/CommonQuality.js";
 
 // TODO: Some of the model configs, such as generation counts, are authoritatively controlled in `legacy/Models.ts`
 
+
+// Aspect ratios the local ComfyUI models render at ~1 megapixel.
+const LOCAL_ASPECT_RATIOS = [
+  CommonAspectRatio.Square,
+  CommonAspectRatio.WideThreeByTwo,
+  CommonAspectRatio.WideFourByThree,
+  CommonAspectRatio.WideSixteenByNine,
+  CommonAspectRatio.TallTwoByThree,
+  CommonAspectRatio.TallThreeByFour,
+  CommonAspectRatio.TallNineBySixteen,
+];
+
+// Local models run on the user's own GPU through ComfyUI (Settings → ComfyUI).
+// The backend catalog doesn't list them, so they are frontend-only overlay models.
+// With an input image (canvas, 3D scene, or one reference) they do image-to-image.
+const localImageModel = (args: {
+  id: string;
+  fullName: string;
+  creator: ModelCreator;
+  selectorName: string;
+  selectorDescription: string;
+  progressBarTime: number;
+}) =>
+  new ImageModel({
+    ...args,
+    tauriId: args.id,
+    category: "image",
+    providers: [GenerationProvider.ComfyUi],
+    selectorBadges: ["Free", "Your GPU"],
+    maxGenerationCount: 4,
+    defaultGenerationCount: 1,
+    canTextToImage: true,
+    canEditImages: true,
+    canUseImagePrompt: true,
+    maxImagePromptCount: 1,
+    tags: [ModelTag.InstructiveEdit],
+    maxPromptLength: 4000,
+    canChangeAspectRatio: true,
+    defaultAspectRatio: CommonAspectRatio.Square,
+    aspectRatios: LOCAL_ASPECT_RATIOS,
+  });
+
 export const IMAGE_MODELS: ImageModel[] = [
   new ImageModel({
     id: "grok_image",
@@ -679,6 +721,30 @@ export const IMAGE_MODELS: ImageModel[] = [
     canTextToImage: false,
     progressBarTime: 10000,
     canChangeAspectRatio: true,
+  }),
+  localImageModel({
+    id: "comfyui_flux_1_schnell",
+    fullName: "Flux 1 Schnell (Local)",
+    creator: ModelCreator.BlackForestLabs,
+    selectorName: "Flux Schnell · Local",
+    selectorDescription: "Free on your own GPU. Fast, 4 steps",
+    progressBarTime: 20000,
+  }),
+  localImageModel({
+    id: "comfyui_flux_1_dev",
+    fullName: "Flux 1 Dev (Local)",
+    creator: ModelCreator.BlackForestLabs,
+    selectorName: "Flux Dev · Local",
+    selectorDescription: "Free on your own GPU. Higher quality, slower",
+    progressBarTime: 60000,
+  }),
+  localImageModel({
+    id: "comfyui_sdxl",
+    fullName: "SDXL (Local)",
+    creator: ModelCreator.Stability,
+    selectorName: "SDXL · Local",
+    selectorDescription: "Free on your own GPU. Any SDXL checkpoint",
+    progressBarTime: 25000,
   }),
 ];
 

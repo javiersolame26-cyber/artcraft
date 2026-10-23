@@ -35,6 +35,9 @@ pub enum GenerateError {
   /// If the response didn't contain job tokens to track.
   ResponseHadNoJobTokens,
 
+  /// The user's local ComfyUI server couldn't take the job. The message is user-facing.
+  ComfyUi(String),
+
   /// Issue with Artcraft router downloads
   ArtcraftRouterDownloadError(DownloadError),
 

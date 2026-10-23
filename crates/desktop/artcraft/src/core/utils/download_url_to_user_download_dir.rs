@@ -62,6 +62,23 @@ pub async fn download_url_with_filename(url: &Url, directory: &Path, filename: &
   Ok(path)
 }
 
+/// Copy a result that is already on disk (e.g. from a local provider) into the
+/// download directory, with the same naming and never-overwrite rules.
+pub async fn copy_file_with_filename(source: &Path, directory: &Path, filename: &str) -> Result<PathBuf, ArtcraftError> {
+  check_url_file_name_for_downloadability(filename)?;
+  tokio::fs::create_dir_all(directory).await?;
+  let bytes = tokio::fs::read(source).await?;
+  let temporary = NamedTempFile::new_in(directory)?;
+  let mut file = tokio::fs::File::from_std(temporary.reopen()?);
+  file.write_all(&bytes).await?;
+  file.flush().await?;
+  file.sync_all().await?;
+  drop(file);
+  let path = persist_download(temporary, directory, filename)?;
+  info!("Saved generation to {:?}", path);
+  Ok(path)
+}
+
 fn persist_download(mut file: NamedTempFile, directory: &Path, filename: &str) -> Result<PathBuf, ArtcraftError> {
   let stem = Path::new(filename).file_stem().and_then(|stem| stem.to_str()).unwrap_or("artcraft");
   let extension = Path::new(filename).extension().and_then(|ext| ext.to_str()).unwrap_or("bin");

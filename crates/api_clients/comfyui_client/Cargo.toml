@@ -1,0 +1,21 @@
+[package]
+name = "comfyui_client"
+edition = "2024"
+version = "0.0.1"
+publish = false
+
+[lib]
+name = "comfyui_client"
+path = "src/lib.rs"
+
+[dependencies]
+log.workspace = true
+reqwest = { workspace = true, features = ["multipart"] }
+serde.workspace = true
+serde_derive.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "net", "io-util"] }

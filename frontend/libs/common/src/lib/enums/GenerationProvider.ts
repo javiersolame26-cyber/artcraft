@@ -13,4 +13,6 @@ export enum GenerationProvider {
   Picsart = "picsart",
   Pixverse = "pixverse",
   Runway = "runway",
+  // The user's own ComfyUI server (local, free generation).
+  ComfyUi = "comfy_ui",
 }

@@ -32,6 +32,7 @@ export * from "./lib/midjourney/MidjourneyGetCredentialInfo.js";
 export * from "./lib/openai/GetOpenAIApiKey.js";
 export * from "./lib/openai/SetOpenAIApiKey.js";
 export * from "./lib/opener/OpenUrl.js";
+export * from "./lib/providers/ComfyUi.js";
 export * from "./lib/providers/GetProviderOrder.js";
 export * from "./lib/providers/Provider.js";
 export * from "./lib/providers/SetProviderOrder.js";

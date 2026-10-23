@@ -65,6 +65,8 @@ export const getProviderDisplayName = (provider: GenerationProvider): string => 
       return "PixVerse";
     case GenerationProvider.Runway:
       return "Runway";
+    case GenerationProvider.ComfyUi:
+      return "ComfyUI (your GPU)";
     default:
       return "Unknown Provider";
   }

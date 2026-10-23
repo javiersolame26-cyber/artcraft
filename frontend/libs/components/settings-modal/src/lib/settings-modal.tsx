@@ -1,6 +1,6 @@
 import { Modal } from "@storyteller/ui-modal";
 import { useEffect, useState } from "react";
-import { CreditCardIcon, DownloadIcon, FlaskConicalIcon, InfoIcon, KeyboardIcon, PaletteIcon, SettingsIcon, UserIcon, Volume2Icon } from "lucide-react";
+import { CpuIcon, CreditCardIcon, DownloadIcon, FlaskConicalIcon, InfoIcon, KeyboardIcon, PaletteIcon, SettingsIcon, UserIcon, Volume2Icon } from "lucide-react";
 import { DynamicIcon } from "@storyteller/icons";
 import { twMerge } from "tailwind-merge";
 import { KeybindsSettings } from "@storyteller/keybinds";
@@ -14,6 +14,7 @@ import { ExperimentalSettingsPane } from "./panes/ExperimentalSettingsPane";
 import { gtagEvent } from "@storyteller/google-analytics";
 import { BillingSettingsPane } from "./panes/BillingSettingsPane";
 import { AppearanceSettingsPane } from "./panes/AppearanceSettingsPane";
+import { ComfyUiSettingsPane } from "./panes/ComfyUiSettingsPane";
 import { Button } from "@storyteller/ui-button";
 import { useExperimentalStore } from "./experimental-store";
 import { ExperimentalConfirmModal } from "./ExperimentalConfirmModal";
@@ -36,6 +37,7 @@ type SettingsSection =
   | "about"
   | "provider_priority"
   | "billing"
+  | "comfyui"
   | "experimental";
 
 export const SettingsModal = ({
@@ -72,6 +74,7 @@ export const SettingsModal = ({
 
     { id: "accounts" as const, label: "Accounts", icon: UserIcon },
     { id: "billing" as const, label: "Plan & Credits", icon: CreditCardIcon },
+    { id: "comfyui" as const, label: "ComfyUI (Local)", icon: CpuIcon },
 
     /* {
       id: "provider_priority" as const,
@@ -113,6 +116,8 @@ export const SettingsModal = ({
         return <ProviderPrioritySettingsPane />;
       case "billing":
         return <BillingSettingsPane />;
+      case "comfyui":
+        return <ComfyUiSettingsPane />;
       case "experimental":
         return (
           <ExperimentalSettingsPane

@@ -381,6 +381,7 @@ dependencies = [
  "build_metadata",
  "bytes",
  "chrono",
+ "comfyui_client",
  "cookie_store 0.0.1",
  "cookie_store_wrapper",
  "directories",
@@ -1586,6 +1587,20 @@ checksum = "35ed6e9d84f0b51a7f52daf1c7d71dd136fd7a3f41a8462b8cdb8c78d920fad4"
 dependencies = [
  "bytes",
  "memchr",
+]
+
+[[package]]
+name = "comfyui_client"
+version = "0.0.1"
+dependencies = [
+ "log",
+ "reqwest 0.12.23",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "url",
 ]
 
 [[package]]

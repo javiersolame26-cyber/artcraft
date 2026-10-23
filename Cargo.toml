@@ -7,6 +7,7 @@ members = [
   "crates/api_clients/artcraft/artcraft_api_defs",
   "crates/api_clients/artcraft/artcraft_client",
   "crates/api_clients/artcraft/artcraft_router",
+  "crates/api_clients/comfyui_client",
   "crates/api_clients/fal_client",
   "crates/api_clients/gmicloud_client",
   "crates/api_clients/grok_api_client",
@@ -58,6 +59,7 @@ cookie_store_wrapper = { path = "crates/lib/cookie_store_wrapper" }
 build_metadata = { path = "crates/lib/build_metadata" }
 cloudflare_errors = { path = "crates/lib/cloudflare_errors" }
 cloudflare_mitigation = { path = "crates/lib/cloudflare_mitigation" }
+comfyui_client = { path = "crates/api_clients/comfyui_client" }
 cookie_store = { path = "crates/lib/cookie_store" }
 enums = { path = "crates/schema/public/enums" }
 errors = { path = "crates/lib/errors" }
