@@ -2,7 +2,7 @@ import { Modal } from "@storyteller/ui-modal";
 import { Tooltip } from "@storyteller/ui-tooltip";
 import { Button } from "@storyteller/ui-button";
 import dayjs from "dayjs";
-import { ArrowDownToLineIcon, BoxIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CopyIcon, GlobeIcon, ImageIcon, InfoIcon, LinkIcon, LogOutIcon, MusicIcon, PauseIcon, PencilIcon, PlayIcon, RotateCwIcon, SearchIcon, Trash2Icon, UserIcon, VideoIcon, WandSparklesIcon } from "lucide-react";
+import { ArrowDownToLineIcon, BlendIcon, BoxIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CopyIcon, GlobeIcon, ImageIcon, InfoIcon, LinkIcon, LogOutIcon, MusicIcon, PauseIcon, PencilIcon, PlayIcon, RotateCwIcon, SearchIcon, Trash2Icon, UserIcon, VideoIcon, WandSparklesIcon } from "lucide-react";
 import { DynamicIcon } from "@storyteller/icons";
 import { MediaFileDelete } from "@storyteller/tauri-api";
 import { LoadingSpinner } from "@storyteller/ui-loading-spinner";
@@ -44,6 +44,7 @@ import {
   formatResolution,
 } from "@storyteller/common";
 import { TagsSection } from "./tags/TagsSection";
+import { FindSimilarButtons } from "./FindSimilarButtons";
 
 interface LightboxModalProps {
   isOpen: boolean;
@@ -84,6 +85,8 @@ interface LightboxModalProps {
     url: string,
     media_id?: string,
   ) => Promise<void> | void;
+  // Add the image to the Fuse assistant, which combines images from an instruction.
+  onFuseClicked?: (url: string, media_id?: string) => Promise<void> | void;
   onRecreateClicked?: (data: {
     promptData: Prompts;
     mediaClass: string | undefined;
@@ -118,6 +121,7 @@ export function LightboxModal({
   onRemoveBackgroundClicked,
   onMake3DObjectClicked,
   onMake3DWorldClicked,
+  onFuseClicked,
   onRecreateClicked,
   batchImageToken,
   onNavigatePrev,
@@ -1164,6 +1168,29 @@ export function LightboxModal({
                       Make 3D World
                     </Button>
                   )}
+
+                {onFuseClicked &&
+                  actionUrl &&
+                  derivedMediaClass === "image" && (
+                    <Button
+                      className="w-full col-span-2 py-1.5 text-[13px]"
+                      variant="secondary"
+                      icon={BlendIcon}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        gtagEvent("fuse_clicked");
+                        await onFuseClicked(actionUrl, selectedMediaToken);
+                        onClose();
+                        onCloseGallery();
+                      }}
+                    >
+                      Fuse with other images
+                    </Button>
+                  )}
+
+                {actionUrl && derivedMediaClass === "image" && (
+                  <FindSimilarButtons imageUrl={actionUrl} prompt={prompt} />
+                )}
 
                 {onDownloadClicked && actionUrl && (
                   <Button

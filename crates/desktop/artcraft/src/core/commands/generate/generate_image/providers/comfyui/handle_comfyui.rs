@@ -7,6 +7,7 @@ use comfyui_client::client::ComfyUiClient;
 use comfyui_client::error::ComfyUiError;
 use comfyui_client::workflows::dimensions::dimensions_for_aspect_ratio;
 use comfyui_client::workflows::image_workflow::{build_image_workflow, ImageWorkflowParams, InitImage};
+use comfyui_client::workflows::kontext_workflow::{build_kontext_workflow, KontextWorkflowParams, MAX_KONTEXT_REFERENCE_IMAGES};
 use comfyui_client::workflows::model_family::ModelFamily;
 use enums::common::generation::common_aspect_ratio::CommonAspectRatio;
 use enums::common::generation::common_generation_mode::CommonGenerationMode;
@@ -15,6 +16,7 @@ use enums::common::generation_provider::GenerationProvider;
 use enums::tauri::tasks::task_type::TaskType;
 use image::ImageReader;
 use log::{error, info, warn};
+use serde_json::Value;
 use tokens::tokens::media_files::MediaFileToken;
 use tokens::tokens::prompts::PromptToken;
 
@@ -23,6 +25,7 @@ use crate::core::commands::enqueue::generate_error::{BadInputReason, GenerateErr
 use crate::core::commands::enqueue::task_enqueue_success::TaskEnqueueSuccess;
 use crate::core::commands::generate::generate_image::providers::artcraft_router::utils::map_media_files_to_urls::map_media_file_tokens_to_cdn_urls;
 use crate::core::commands::generate::generate_image::tauri_generate_image_request::TauriGenerateImageRequest;
+use crate::core::commands::generate::generate_image::tauri_image_model::ComfyUiWorkflow;
 use crate::core::state::app_env_configs::app_env_configs::AppEnvConfigs;
 use crate::core::state::comfyui_settings::{ComfyUiSettings, ComfyUiSettingsStore};
 use crate::services::storyteller::state::storyteller_credential_manager::StorytellerCredentialManager;
@@ -36,6 +39,10 @@ const FILENAME_PREFIX: &str = "ArtCraft/artcraft";
 /// One pass renders the whole batch, so keep it within consumer-GPU memory.
 const MAX_BATCH_SIZE: u32 = 4;
 
+/// Kontext attends to the reference sheet as well as the output, so each
+/// image costs about twice as much memory as a plain FLUX image.
+const MAX_KONTEXT_BATCH_SIZE: u32 = 2;
+
 /// Generate an image on the user's own ComfyUI server.
 ///
 /// The prompt is queued right away; `poll_comfyui_tasks` picks up the result
@@ -47,31 +54,74 @@ pub async fn handle_comfyui(
   storyteller_creds_manager: &StorytellerCredentialManager,
 ) -> Result<TaskEnqueueSuccess, GenerateError> {
   let tauri_model = request.model.ok_or(GenerateError::no_model_specified())?;
-  let family = tauri_model.comfyui_family().ok_or_else(|| GenerateError::BadInput(
+  let workflow_kind = tauri_model.comfyui_workflow().ok_or_else(|| GenerateError::BadInput(
     BadInputReason::WrongImageArguments(format!("Model {:?} can't run on ComfyUI. Pick one of the local models.", tauri_model)),
   ))?;
 
   let settings = settings_store.get();
   let client = ComfyUiClient::new(&settings.server_url).map_err(|err| comfyui_error(&settings, err))?;
-
   let prompt = request.prompt.as_deref().map(str::trim).unwrap_or_default();
-  let maybe_init_bytes = load_init_image(request, &app_env_configs.storyteller_host).await?;
+  let api_host = &app_env_configs.storyteller_host;
+
+  let run = match workflow_kind {
+    ComfyUiWorkflow::Checkpoint(family) => plan_checkpoint_run(request, &client, &settings, family, prompt, api_host).await?,
+    ComfyUiWorkflow::Kontext => plan_kontext_run(request, &client, &settings, prompt, api_host).await?,
+  };
+
+  info!("Queueing ComfyUI workflow on {}: {}", client.base_url(), run.summary);
+
+  let queued = client.queue_prompt(&run.workflow, COMFYUI_CLIENT_ID).await
+    .map_err(|err| comfyui_error(&settings, err))?;
+
+  info!("ComfyUI accepted prompt {}", queued.prompt_id);
+
+  let maybe_prompt_token = create_prompt_record(request, &run, prompt, api_host, storyteller_creds_manager).await;
+
+  Ok(TaskEnqueueSuccess {
+    task_type: TaskType::ImageGeneration,
+    model: Some(tauri_image_model_to_generation_model(tauri_model)),
+    provider: GenerationProvider::ComfyUi,
+    provider_job_id: Some(queued.prompt_id.clone()),
+    maybe_queue_status_url: Some(client.history_url(&queued.prompt_id).to_string()),
+    maybe_queue_response_url: None,
+    maybe_prompt_token,
+  })
+}
+
+/// A workflow ready to queue, plus what the library record needs to know about it.
+struct PlannedRun {
+  workflow: Value,
+  batch_size: u32,
+  is_image_to_image: bool,
+  maybe_model_type: Option<CommonModelType>,
+  /// For the log.
+  summary: String,
+}
+
+// ── Workflows ──
+
+/// Text to image, or image to image from the canvas, 3D scene or first reference.
+async fn plan_checkpoint_run(
+  request: &TauriGenerateImageRequest,
+  client: &ComfyUiClient,
+  settings: &ComfyUiSettings,
+  family: ModelFamily,
+  prompt: &str,
+  api_host: &ApiHost,
+) -> Result<PlannedRun, GenerateError> {
+  let maybe_init_bytes = load_init_image(request, api_host).await?;
 
   if prompt.is_empty() && maybe_init_bytes.is_none() {
     return Err(GenerateError::BadInput(BadInputReason::WrongImageArguments("Describe the image you want to create.".to_string())));
   }
 
   let (width, height) = plan_dimensions(request.aspect_ratio, maybe_init_bytes.as_deref());
-  let batch_size = plan_batch_size(request.batch_size)?;
+  let batch_size = plan_batch_size(request.batch_size, MAX_BATCH_SIZE)?;
 
-  let maybe_uploaded = match maybe_init_bytes {
-    Some(bytes) => {
-      let filename = format!("artcraft_input_{}.png", uuid_utils::uuid::generate_random_uuid());
-      Some(client.upload_image(bytes, &filename).await.map_err(|err| comfyui_error(&settings, err))?)
-    }
+  let maybe_load_image_value = match maybe_init_bytes {
+    Some(bytes) => Some(upload_input_image(client, settings, bytes).await?),
     None => None,
   };
-  let maybe_load_image_value = maybe_uploaded.as_ref().map(|image| image.load_image_value());
 
   let workflow = build_image_workflow(&ImageWorkflowParams {
     family,
@@ -89,38 +139,72 @@ pub async fn handle_comfyui(
     filename_prefix: FILENAME_PREFIX,
   });
 
-  info!(
-    "Queueing ComfyUI {:?} workflow on {}: {}x{}, batch {}, image-to-image: {}",
-    family, client.base_url(), width, height, batch_size, maybe_load_image_value.is_some(),
-  );
-
-  let queued = client.queue_prompt(&workflow, COMFYUI_CLIENT_ID).await
-    .map_err(|err| comfyui_error(&settings, err))?;
-
-  info!("ComfyUI accepted prompt {}", queued.prompt_id);
-
-  let maybe_prompt_token = create_prompt_record(
-    request,
-    family,
-    prompt,
+  Ok(PlannedRun {
+    workflow,
     batch_size,
-    maybe_load_image_value.is_some(),
-    &app_env_configs.storyteller_host,
-    storyteller_creds_manager,
-  ).await;
-
-  Ok(TaskEnqueueSuccess {
-    task_type: TaskType::ImageGeneration,
-    model: Some(tauri_image_model_to_generation_model(tauri_model)),
-    provider: GenerationProvider::ComfyUi,
-    provider_job_id: Some(queued.prompt_id.clone()),
-    maybe_queue_status_url: Some(client.history_url(&queued.prompt_id).to_string()),
-    maybe_queue_response_url: None,
-    maybe_prompt_token,
+    is_image_to_image: maybe_load_image_value.is_some(),
+    maybe_model_type: match family {
+      ModelFamily::FluxSchnell => Some(CommonModelType::Flux1Schnell),
+      ModelFamily::FluxDev => Some(CommonModelType::Flux1Dev),
+      ModelFamily::Sdxl => None,
+    },
+    summary: format!(
+      "{:?} {}x{}, batch {}, image-to-image: {}", family, width, height, batch_size, maybe_load_image_value.is_some(),
+    ),
   })
 }
 
-// ── Input image ──
+/// An instruction applied to up to four images at once: the canvas or 3D
+/// scene (when there is one) followed by the reference images, in order.
+async fn plan_kontext_run(
+  request: &TauriGenerateImageRequest,
+  client: &ComfyUiClient,
+  settings: &ComfyUiSettings,
+  prompt: &str,
+  api_host: &ApiHost,
+) -> Result<PlannedRun, GenerateError> {
+  if prompt.is_empty() {
+    return Err(GenerateError::BadInput(BadInputReason::WrongImageArguments(
+      "Tell Kontext what to do with your images, e.g. \"put the person from image 1 in the place from image 2\".".to_string(),
+    )));
+  }
+
+  let references = load_reference_images(request, api_host).await?;
+  let (width, height) = plan_dimensions(request.aspect_ratio, references.first().map(Vec::as_slice));
+  let batch_size = plan_batch_size(request.batch_size, MAX_KONTEXT_BATCH_SIZE)?;
+
+  let mut load_image_values = Vec::with_capacity(references.len());
+  for bytes in references {
+    load_image_values.push(upload_input_image(client, settings, bytes).await?);
+  }
+
+  let workflow = build_kontext_workflow(&KontextWorkflowParams {
+    files: settings.kontext_files(),
+    prompt,
+    reference_images: &load_image_values,
+    width,
+    height,
+    batch_size,
+    seed: random_seed(),
+    filename_prefix: FILENAME_PREFIX,
+  });
+
+  Ok(PlannedRun {
+    workflow,
+    batch_size,
+    is_image_to_image: !load_image_values.is_empty(),
+    maybe_model_type: None,
+    summary: format!("Kontext {}x{}, batch {}, {} reference image(s)", width, height, batch_size, load_image_values.len()),
+  })
+}
+
+async fn upload_input_image(client: &ComfyUiClient, settings: &ComfyUiSettings, bytes: Vec<u8>) -> Result<String, GenerateError> {
+  let filename = format!("artcraft_input_{}.png", uuid_utils::uuid::generate_random_uuid());
+  let uploaded = client.upload_image(bytes, &filename).await.map_err(|err| comfyui_error(settings, err))?;
+  Ok(uploaded.load_image_value())
+}
+
+// ── Input images ──
 
 /// The image to start from, in the same precedence the other providers use:
 /// canvas, then 3D scene, then the first reference image.
@@ -144,6 +228,40 @@ async fn load_init_image(
   }
 
   Ok(None)
+}
+
+/// Every image Kontext should see: the canvas or 3D scene first (whichever
+/// the page sent), then the reference images. At most four.
+async fn load_reference_images(
+  request: &TauriGenerateImageRequest,
+  api_host: &ApiHost,
+) -> Result<Vec<Vec<u8>>, GenerateError> {
+  let mut images = Vec::new();
+
+  let surfaces = [
+    (request.canvas_image_raw_bytes.as_ref(), request.canvas_image_media_token.as_ref()),
+    (request.scene_image_raw_bytes.as_ref(), request.scene_image_media_token.as_ref()),
+  ];
+  for (maybe_bytes, maybe_token) in surfaces {
+    if let Some(bytes) = maybe_bytes.filter(|bytes| !bytes.is_empty()) {
+      images.push(bytes.clone());
+      break;
+    }
+    if let Some(token) = maybe_token {
+      images.push(download_media_file(token, api_host).await?);
+      break;
+    }
+  }
+
+  for token in request.image_media_tokens.iter().flatten() {
+    if images.len() >= MAX_KONTEXT_REFERENCE_IMAGES {
+      warn!("[ComfyUi] Kontext takes up to {} images; ignoring the rest", MAX_KONTEXT_REFERENCE_IMAGES);
+      break;
+    }
+    images.push(download_media_file(token, api_host).await?);
+  }
+
+  Ok(images)
 }
 
 async fn download_media_file(token: &MediaFileToken, api_host: &ApiHost) -> Result<Vec<u8>, GenerateError> {
@@ -196,10 +314,10 @@ fn image_size(bytes: &[u8]) -> Option<(u32, u32)> {
     .ok()
 }
 
-fn plan_batch_size(maybe_requested: Option<u32>) -> Result<u32, GenerateError> {
+fn plan_batch_size(maybe_requested: Option<u32>, max: u32) -> Result<u32, GenerateError> {
   match maybe_requested.unwrap_or(1) {
-    0 => Err(GenerateError::BadInput(BadInputReason::InvalidNumberOfRequestedImages { requested: 0, min: 1, max: MAX_BATCH_SIZE })),
-    n => Ok(n.min(MAX_BATCH_SIZE)),
+    0 => Err(GenerateError::BadInput(BadInputReason::InvalidNumberOfRequestedImages { requested: 0, min: 1, max })),
+    n => Ok(n.min(max)),
   }
 }
 
@@ -214,10 +332,8 @@ fn random_seed() -> u64 {
 /// Attach the prompt to the results in the ArtCraft library. Fails open.
 async fn create_prompt_record(
   request: &TauriGenerateImageRequest,
-  family: ModelFamily,
+  run: &PlannedRun,
   prompt: &str,
-  batch_size: u32,
-  is_image_to_image: bool,
   api_host: &ApiHost,
   storyteller_creds_manager: &StorytellerCredentialManager,
 ) -> Option<PromptToken> {
@@ -233,17 +349,13 @@ async fn create_prompt_record(
     uuid_idempotency_token: uuid_utils::uuid::generate_random_uuid(),
     positive_prompt: Some(prompt.to_string()).filter(|p| !p.is_empty()),
     negative_prompt: None,
-    model_type: match family {
-      ModelFamily::FluxSchnell => Some(CommonModelType::Flux1Schnell),
-      ModelFamily::FluxDev => Some(CommonModelType::Flux1Dev),
-      ModelFamily::Sdxl => None,
-    },
+    model_type: run.maybe_model_type,
     // The ArtCraft backend doesn't know local providers; leave it unset.
     generation_provider: None,
-    maybe_generation_mode: Some(if is_image_to_image { CommonGenerationMode::Edit } else { CommonGenerationMode::Text }),
+    maybe_generation_mode: Some(if run.is_image_to_image { CommonGenerationMode::Edit } else { CommonGenerationMode::Text }),
     maybe_aspect_ratio: request.aspect_ratio,
     maybe_resolution: None,
-    maybe_batch_count: Some(batch_size.min(255) as u8),
+    maybe_batch_count: Some(run.batch_size.min(255) as u8),
     maybe_generate_audio: None,
     maybe_duration_seconds: None,
   };
@@ -270,6 +382,12 @@ fn comfyui_error(settings: &ComfyUiSettings, err: ComfyUiError) -> GenerateError
     ),
     ComfyUiError::PromptRejected { message, .. } if message.contains("ckpt_name") => format!(
       "ComfyUI doesn't have the model file this needs. Put it in ComfyUI/models/checkpoints or pick another file in Settings → ComfyUI. Details: {}", message,
+    ),
+    ComfyUiError::PromptRejected { message, .. } if ["unet_name", "clip_name", "vae_name"].iter().any(|input| message.contains(input)) => format!(
+      "ComfyUI doesn't have the Flux Kontext files. They go in ComfyUI/models/diffusion_models, text_encoders and vae; check them in Settings → ComfyUI. Details: {}", message,
+    ),
+    ComfyUiError::PromptRejected { message, .. } if message.contains("does not exist") => format!(
+      "Your ComfyUI is missing a node this model needs, so it is probably too old. Update ComfyUI (update/update_comfyui.bat in the portable build) and try again. Details: {}", message,
     ),
     ComfyUiError::PromptRejected { message, .. } => format!("ComfyUI rejected the request: {}", message),
     other => format!("ComfyUI error: {}", other),
@@ -309,13 +427,14 @@ mod tests {
 
     #[test]
     fn defaults_to_one_and_caps() {
-      assert_eq!(plan_batch_size(None).unwrap(), 1);
-      assert_eq!(plan_batch_size(Some(9)).unwrap(), MAX_BATCH_SIZE);
+      assert_eq!(plan_batch_size(None, MAX_BATCH_SIZE).unwrap(), 1);
+      assert_eq!(plan_batch_size(Some(9), MAX_BATCH_SIZE).unwrap(), MAX_BATCH_SIZE);
+      assert_eq!(plan_batch_size(Some(4), MAX_KONTEXT_BATCH_SIZE).unwrap(), MAX_KONTEXT_BATCH_SIZE);
     }
 
     #[test]
     fn zero_is_rejected() {
-      assert!(matches!(plan_batch_size(Some(0)), Err(GenerateError::BadInput(_))));
+      assert!(matches!(plan_batch_size(Some(0), MAX_BATCH_SIZE), Err(GenerateError::BadInput(_))));
     }
   }
 
@@ -337,6 +456,26 @@ mod tests {
       });
       let GenerateError::ComfyUi(message) = err else { panic!("expected ComfyUi error") };
       assert!(message.contains("models/checkpoints"));
+    }
+
+    #[test]
+    fn missing_kontext_file_names_its_folders() {
+      let err = comfyui_error(&ComfyUiSettings::default(), ComfyUiError::PromptRejected {
+        message: "Prompt outputs failed validation (UNETLoader: Value not in list - unet_name: 'x' not in [])".to_string(),
+        node_errors: String::new(),
+      });
+      let GenerateError::ComfyUi(message) = err else { panic!("expected ComfyUi error") };
+      assert!(message.contains("diffusion_models"), "{}", message);
+    }
+
+    #[test]
+    fn unknown_node_suggests_updating_comfyui() {
+      let err = comfyui_error(&ComfyUiSettings::default(), ComfyUiError::PromptRejected {
+        message: "Cannot execute because node ImageStitch does not exist.".to_string(),
+        node_errors: String::new(),
+      });
+      let GenerateError::ComfyUi(message) = err else { panic!("expected ComfyUi error") };
+      assert!(message.contains("Update ComfyUI"), "{}", message);
     }
 
     #[test]
@@ -403,6 +542,46 @@ mod tests {
       assert!(workflow.get("5").is_none(), "image-to-image must not start from an empty latent");
       let denoise = workflow["10"]["inputs"]["denoise"].as_f64().unwrap();
       assert!((denoise - 0.4).abs() < 1e-6);
+    }
+
+    #[tokio::test]
+    async fn kontext_request_queues_a_reference_edit() {
+      let (base_url, captured) = fake_comfyui().await;
+      let request = frontend_request(json!({
+        "provider": "comfy_ui",
+        "model": "comfyui_flux_kontext",
+        "prompt": "make it a watercolor painting",
+        "batch_size": 4,
+        "canvas_image_raw_bytes": encode_png(900, 1200),
+      }));
+      let settings = ComfyUiSettingsStore::new(ComfyUiSettings { server_url: base_url.clone(), ..ComfyUiSettings::default() });
+      let (configs, creds) = app_state();
+
+      let success = handle_comfyui(&request, &settings, &configs, &creds).await.expect("enqueue should succeed");
+
+      assert_eq!(success.provider_job_id.as_deref(), Some(PROMPT_ID));
+      let requests = captured.lock().unwrap().clone();
+      assert_eq!(requests.iter().map(|(path, _)| path.as_str()).collect::<Vec<_>>(), vec!["/upload/image", "/prompt"]);
+      let body: Value = serde_json::from_slice(&requests[1].1).unwrap();
+      let workflow = &body["prompt"];
+      assert_eq!(workflow["1"]["class_type"], "UNETLoader");
+      assert_eq!(workflow["1"]["inputs"]["unet_name"], "flux1-dev-kontext_fp8_scaled.safetensors");
+      assert_eq!(workflow["4"]["inputs"]["text"], "make it a watercolor painting");
+      assert_eq!(workflow["20"]["inputs"]["image"], "uploaded_scene.png");
+      assert_eq!(workflow["5"]["class_type"], "ReferenceLatent");
+      // "Auto" follows the canvas (3:4) and the batch is capped for Kontext.
+      assert_eq!(workflow["8"]["inputs"], json!({ "width": 896, "height": 1152, "batch_size": 2 }));
+    }
+
+    #[tokio::test]
+    async fn kontext_needs_an_instruction() {
+      let request = frontend_request(json!({ "provider": "comfy_ui", "model": "comfyui_flux_kontext", "prompt": "  " }));
+      let settings = ComfyUiSettingsStore::new(ComfyUiSettings::default());
+      let (configs, creds) = app_state();
+
+      let result = handle_comfyui(&request, &settings, &configs, &creds).await;
+
+      assert!(matches!(result, Err(GenerateError::BadInput(_))));
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-import { BoxIcon, CrosshairIcon, DropletIcon, FilmIcon, GlobeIcon, GroupIcon, ImageIcon, ImagesIcon, MusicIcon, PenToolIcon, PencilIcon, SparklesIcon, WandSparklesIcon } from "lucide-react";
+import { BlendIcon, BoxIcon, CrosshairIcon, DropletIcon, FilmIcon, GlobeIcon, GroupIcon, ImageIcon, ImagesIcon, MusicIcon, PenToolIcon, PencilIcon, SparklesIcon, WandSparklesIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useMemo } from "react";
 import {
@@ -24,7 +24,8 @@ export type AppId =
   | "STORYBOARD"
   | "BACKGROUND_CHANGE"
   | "VIDEO_EDITOR"
-  | "MOODBOARD";
+  | "MOODBOARD"
+  | "FUSE";
 
 export interface AppDescriptor {
   id: AppId;
@@ -176,6 +177,12 @@ const APP_CARD_PALETTES: Record<string, AppCardPalette> = {
     iconColor: "text-violet-300",
     hoverStyle: "hover:border-violet-400/60 hover:bg-violet-500/10",
   },
+  fuse: {
+    accent: "from-orange-500/20 to-orange-500/0",
+    iconBg: "bg-orange-500/20 border-orange-400/40",
+    iconColor: "text-orange-300",
+    hoverStyle: "hover:border-orange-400/60 hover:bg-orange-500/10",
+  },
   angles: {
     accent: "from-lime-500/20 to-lime-500/0",
     iconBg: "bg-lime-500/20 border-lime-400/40",
@@ -239,6 +246,16 @@ export const ALL_APPS: FullAppItem[] = [
     category: "generate",
     action: "AUDIO",
     color: "bg-pink-500/40",
+  },
+  {
+    id: "fuse",
+    label: "Fuse Images",
+    description: "Blend images from the web and your library with an instruction",
+    icon: BlendIcon,
+    category: "generate",
+    action: "FUSE",
+    color: "bg-orange-500/40",
+    badge: "NEW",
   },
   {
     id: "image-to-3d-object",
@@ -444,6 +461,7 @@ export const goToApp = (action?: string) => {
       "BACKGROUND_CHANGE",
       "VIDEO_EDITOR",
       "MOODBOARD",
+      "FUSE",
     ].includes(action)
   ) {
     if (action === "STORYBOARD") {

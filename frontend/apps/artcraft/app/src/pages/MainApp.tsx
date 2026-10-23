@@ -105,6 +105,9 @@ const PageVideoEditor = lazy(() =>
 const PageMoodboard = lazy(() =>
   import("./PageMoodboard").then((m) => ({ default: m.PageMoodboard })),
 );
+const PageFuse = lazy(() =>
+  import("./PageFuse").then((m) => ({ default: m.PageFuse })),
+);
 
 interface Props {
   sceneToken?: string;
@@ -348,6 +351,12 @@ const TabBody = ({ sceneToken }: { sceneToken?: string }) => {
       return (
         <div className="h-[calc(100vh-56px)] w-full overflow-hidden">
           <PageMoodboard />
+        </div>
+      );
+    case "FUSE":
+      return (
+        <div>
+          <PageFuse />
         </div>
       );
     default:

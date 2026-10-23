@@ -35,6 +35,7 @@ pub async fn handle_third_party_task_failure(
     service: to_generation_service_provider(task.provider),
     model: None,
     reason: Some(reason.to_string()),
+    maybe_frontend_subscriber_id: task.frontend_subscriber_id.clone(),
   };
 
   event.send_infallible(app_handle);

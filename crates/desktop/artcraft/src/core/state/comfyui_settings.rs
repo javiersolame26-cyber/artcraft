@@ -2,7 +2,9 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::{Arc, RwLock};
 
+use comfyui_client::api::model_files::ModelFolder;
 use comfyui_client::client::DEFAULT_COMFYUI_URL;
+use comfyui_client::workflows::kontext_workflow::KontextModelFiles;
 use comfyui_client::workflows::model_family::ModelFamily;
 use errors::AnyhowResult;
 use log::{info, warn};
@@ -16,12 +18,19 @@ pub const DEFAULT_FLUX_SCHNELL_CHECKPOINT: &str = "flux1-schnell-fp8.safetensors
 pub const DEFAULT_FLUX_DEV_CHECKPOINT: &str = "flux1-dev-fp8.safetensors";
 pub const DEFAULT_SDXL_CHECKPOINT: &str = "sd_xl_base_1.0.safetensors";
 
+/// FLUX.1 Kontext [dev] ships as separate files; these are the names in
+/// ComfyUI's Kontext template (Comfy-Org and comfyanonymous on Hugging Face).
+pub const DEFAULT_KONTEXT_DIFFUSION_MODEL: &str = "flux1-dev-kontext_fp8_scaled.safetensors";
+pub const DEFAULT_KONTEXT_CLIP_L: &str = "clip_l.safetensors";
+pub const DEFAULT_KONTEXT_T5XXL: &str = "t5xxl_fp8_e4m3fn_scaled.safetensors";
+pub const DEFAULT_KONTEXT_VAE: &str = "ae.safetensors";
+
 /// How much an input image (canvas, 3D scene, reference) may change.
 const DEFAULT_IMAGE_EDIT_STRENGTH: f32 = 0.65;
 const MIN_IMAGE_EDIT_STRENGTH: f32 = 0.05;
 
-/// Where the user's ComfyUI server lives and which checkpoint file each
-/// local model uses. Stored as `settings/comfyui_settings.json`.
+/// Where the user's ComfyUI server lives and which model files each local
+/// model uses. Stored as `settings/comfyui_settings.json`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ComfyUiSettings {
@@ -29,6 +38,14 @@ pub struct ComfyUiSettings {
   pub flux_schnell_checkpoint: String,
   pub flux_dev_checkpoint: String,
   pub sdxl_checkpoint: String,
+  /// In `models/diffusion_models`.
+  pub kontext_diffusion_model: String,
+  /// In `models/text_encoders`.
+  pub kontext_clip_l: String,
+  /// In `models/text_encoders`.
+  pub kontext_t5xxl: String,
+  /// In `models/vae`.
+  pub kontext_vae: String,
   /// 0.05–1.0. Lower keeps more of the input image in image-to-image.
   pub image_edit_strength: f32,
 }
@@ -46,6 +63,10 @@ impl Default for ComfyUiSettings {
       flux_schnell_checkpoint: DEFAULT_FLUX_SCHNELL_CHECKPOINT.to_string(),
       flux_dev_checkpoint: DEFAULT_FLUX_DEV_CHECKPOINT.to_string(),
       sdxl_checkpoint: DEFAULT_SDXL_CHECKPOINT.to_string(),
+      kontext_diffusion_model: DEFAULT_KONTEXT_DIFFUSION_MODEL.to_string(),
+      kontext_clip_l: DEFAULT_KONTEXT_CLIP_L.to_string(),
+      kontext_t5xxl: DEFAULT_KONTEXT_T5XXL.to_string(),
+      kontext_vae: DEFAULT_KONTEXT_VAE.to_string(),
       image_edit_strength: DEFAULT_IMAGE_EDIT_STRENGTH,
     }
   }
@@ -90,6 +111,10 @@ impl ComfyUiSettings {
       flux_schnell_checkpoint: non_blank_or(self.flux_schnell_checkpoint, defaults.flux_schnell_checkpoint),
       flux_dev_checkpoint: non_blank_or(self.flux_dev_checkpoint, defaults.flux_dev_checkpoint),
       sdxl_checkpoint: non_blank_or(self.sdxl_checkpoint, defaults.sdxl_checkpoint),
+      kontext_diffusion_model: non_blank_or(self.kontext_diffusion_model, defaults.kontext_diffusion_model),
+      kontext_clip_l: non_blank_or(self.kontext_clip_l, defaults.kontext_clip_l),
+      kontext_t5xxl: non_blank_or(self.kontext_t5xxl, defaults.kontext_t5xxl),
+      kontext_vae: non_blank_or(self.kontext_vae, defaults.kontext_vae),
       image_edit_strength: if self.image_edit_strength.is_finite() {
         self.image_edit_strength.clamp(MIN_IMAGE_EDIT_STRENGTH, 1.0)
       } else {
@@ -109,6 +134,25 @@ impl ComfyUiSettings {
   /// Every checkpoint name the local models are configured to use.
   pub fn configured_checkpoints(&self) -> [&str; 3] {
     [&self.flux_schnell_checkpoint, &self.flux_dev_checkpoint, &self.sdxl_checkpoint]
+  }
+
+  pub fn kontext_files(&self) -> KontextModelFiles<'_> {
+    KontextModelFiles {
+      diffusion_model: &self.kontext_diffusion_model,
+      clip_l: &self.kontext_clip_l,
+      t5xxl: &self.kontext_t5xxl,
+      vae: &self.kontext_vae,
+    }
+  }
+
+  /// The Kontext files with the ComfyUI folder each one must be in.
+  pub fn kontext_files_by_folder(&self) -> [(ModelFolder, &str); 4] {
+    [
+      (ModelFolder::DiffusionModels, &self.kontext_diffusion_model),
+      (ModelFolder::TextEncoders, &self.kontext_clip_l),
+      (ModelFolder::TextEncoders, &self.kontext_t5xxl),
+      (ModelFolder::Vae, &self.kontext_vae),
+    ]
   }
 }
 
@@ -146,6 +190,7 @@ mod tests {
     let settings: ComfyUiSettings = serde_json::from_str(r#"{"server_url": "http://192.168.1.20:8188"}"#).unwrap();
     assert_eq!(settings.server_url, "http://192.168.1.20:8188");
     assert_eq!(settings.flux_schnell_checkpoint, DEFAULT_FLUX_SCHNELL_CHECKPOINT);
+    assert_eq!(settings.kontext_diffusion_model, DEFAULT_KONTEXT_DIFFUSION_MODEL);
     assert_eq!(settings.image_edit_strength, DEFAULT_IMAGE_EDIT_STRENGTH);
   }
 
@@ -155,13 +200,15 @@ mod tests {
       server_url: "  ".to_string(),
       flux_schnell_checkpoint: " juggernaut.safetensors ".to_string(),
       flux_dev_checkpoint: String::new(),
-      sdxl_checkpoint: DEFAULT_SDXL_CHECKPOINT.to_string(),
+      kontext_vae: " ".to_string(),
       image_edit_strength: 3.0,
+      ..ComfyUiSettings::default()
     }.normalized();
 
     assert_eq!(settings.server_url, DEFAULT_COMFYUI_URL);
     assert_eq!(settings.flux_schnell_checkpoint, "juggernaut.safetensors");
     assert_eq!(settings.flux_dev_checkpoint, DEFAULT_FLUX_DEV_CHECKPOINT);
+    assert_eq!(settings.kontext_vae, DEFAULT_KONTEXT_VAE);
     assert_eq!(settings.image_edit_strength, 1.0);
   }
 
@@ -176,5 +223,15 @@ mod tests {
     let settings = ComfyUiSettings::default();
     assert_eq!(settings.checkpoint_for(ModelFamily::FluxDev), DEFAULT_FLUX_DEV_CHECKPOINT);
     assert_eq!(settings.checkpoint_for(ModelFamily::Sdxl), DEFAULT_SDXL_CHECKPOINT);
+  }
+
+  #[test]
+  fn kontext_files_keep_their_folders() {
+    let settings = ComfyUiSettings::default();
+    let files = settings.kontext_files_by_folder();
+    assert_eq!(files[0], (ModelFolder::DiffusionModels, DEFAULT_KONTEXT_DIFFUSION_MODEL));
+    assert_eq!(files[2], (ModelFolder::TextEncoders, DEFAULT_KONTEXT_T5XXL));
+    assert_eq!(files[3], (ModelFolder::Vae, DEFAULT_KONTEXT_VAE));
+    assert_eq!(settings.kontext_files().clip_l, DEFAULT_KONTEXT_CLIP_L);
   }
 }

@@ -6,8 +6,8 @@ use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use url::Url;
 
-use crate::api::checkpoints::parse_checkpoint_names;
 use crate::api::history::{parse_history, OutputImage, PromptHistory};
+use crate::api::model_files::{parse_model_file_names, ModelFolder};
 use crate::api::queue::{parse_queue, QueueSnapshot};
 use crate::api::queue_prompt::{parse_queued_prompt, parse_rejection, QueuePromptRequest, QueuedPrompt};
 use crate::api::system_stats::{parse_system_stats, SystemStats};
@@ -77,8 +77,13 @@ impl ComfyUiClient {
   }
 
   pub async fn list_checkpoints(&self) -> Result<Vec<String>, ComfyUiError> {
-    let body = self.get_text("object_info/CheckpointLoaderSimple").await?;
-    parse_checkpoint_names(&body)
+    self.list_model_files(ModelFolder::Checkpoints).await
+  }
+
+  /// The files ComfyUI sees in one of its `models/…` folders.
+  pub async fn list_model_files(&self, folder: ModelFolder) -> Result<Vec<String>, ComfyUiError> {
+    let body = self.get_text(&format!("object_info/{}", folder.loader_node())).await?;
+    parse_model_file_names(&body, folder)
   }
 
   /// Store an input image on the server for a `LoadImage` node.

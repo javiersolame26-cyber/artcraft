@@ -304,6 +304,7 @@ interface GalleryModalProps {
     url: string,
     media_id?: string,
   ) => Promise<void> | void;
+  onFuseClicked?: (url: string, mediaId?: string) => Promise<void> | void;
   onRecreateClicked?: (data: {
     promptData: Prompts;
     mediaClass: string | undefined;
@@ -593,6 +594,7 @@ export const GalleryModal = React.memo(
     onRemoveBackgroundClicked,
     onMake3DObjectClicked,
     onMake3DWorldClicked,
+    onFuseClicked,
     onRecreateClicked,
     hideFilter,
     onDeleteMedia,
@@ -3700,6 +3702,7 @@ export const GalleryModal = React.memo(
             onRemoveBackgroundClicked={onRemoveBackgroundClicked}
             onMake3DObjectClicked={onMake3DObjectClicked}
             onMake3DWorldClicked={onMake3DWorldClicked}
+            onFuseClicked={onFuseClicked}
             onRecreateClicked={onRecreateClicked}
             onNavigatePrev={
               galleryModalLightboxNavPrev.value ?? handleNavigatePrev

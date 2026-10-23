@@ -8,6 +8,11 @@ export interface ComfyUiSettings {
   flux_schnell_checkpoint: string;
   flux_dev_checkpoint: string;
   sdxl_checkpoint: string;
+  // Flux Kontext's separate files, in models/diffusion_models, models/text_encoders (two) and models/vae.
+  kontext_diffusion_model: string;
+  kontext_clip_l: string;
+  kontext_t5xxl: string;
+  kontext_vae: string;
   // 0.05 – 1.0. Lower keeps more of the input image (canvas, 3D scene, reference).
   image_edit_strength: number;
 }
@@ -26,6 +31,12 @@ export interface ComfyUiConnectionInfo {
   checkpoints: string[];
   // Configured checkpoints ComfyUI doesn't have.
   missing_checkpoints: string[];
+  // Files in models/diffusion_models, models/text_encoders and models/vae.
+  diffusion_models: string[];
+  text_encoders: string[];
+  vae_files: string[];
+  // Configured Flux Kontext files ComfyUI doesn't have.
+  missing_kontext_files: string[];
 }
 
 interface CommandSuccess<T> extends CommandResult {

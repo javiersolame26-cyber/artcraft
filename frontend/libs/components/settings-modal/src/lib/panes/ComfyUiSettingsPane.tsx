@@ -11,12 +11,38 @@ import {
 } from "@storyteller/tauri-api";
 import { PlugZapIcon, SaveIcon } from "lucide-react";
 
-type CheckpointField = "flux_schnell_checkpoint" | "flux_dev_checkpoint" | "sdxl_checkpoint";
+type ModelFileField =
+  | "flux_schnell_checkpoint"
+  | "flux_dev_checkpoint"
+  | "sdxl_checkpoint"
+  | "kontext_diffusion_model"
+  | "kontext_clip_l"
+  | "kontext_t5xxl"
+  | "kontext_vae";
 
-const CHECKPOINT_FIELDS: { field: CheckpointField; model: string; hint: string }[] = [
-  { field: "flux_schnell_checkpoint", model: "Flux Schnell · Local", hint: "e.g. flux1-schnell-fp8.safetensors" },
-  { field: "flux_dev_checkpoint", model: "Flux Dev · Local", hint: "e.g. flux1-dev-fp8.safetensors" },
-  { field: "sdxl_checkpoint", model: "SDXL · Local", hint: "any SDXL checkpoint, e.g. sd_xl_base_1.0.safetensors" },
+// Which list in the connection info holds the files a field can use.
+type ModelFolder = "checkpoints" | "diffusion_models" | "text_encoders" | "vae_files";
+
+interface ModelFileSpec {
+  field: ModelFileField;
+  label: string;
+  // Model name used in the "missing file" warning.
+  model: string;
+  folder: ModelFolder;
+  hint: string;
+}
+
+const CHECKPOINT_FIELDS: ModelFileSpec[] = [
+  { field: "flux_schnell_checkpoint", label: "Flux Schnell · Local", model: "Flux Schnell · Local", folder: "checkpoints", hint: "e.g. flux1-schnell-fp8.safetensors" },
+  { field: "flux_dev_checkpoint", label: "Flux Dev · Local", model: "Flux Dev · Local", folder: "checkpoints", hint: "e.g. flux1-dev-fp8.safetensors" },
+  { field: "sdxl_checkpoint", label: "SDXL · Local", model: "SDXL · Local", folder: "checkpoints", hint: "any SDXL checkpoint, e.g. sd_xl_base_1.0.safetensors" },
+];
+
+const KONTEXT_FIELDS: ModelFileSpec[] = [
+  { field: "kontext_diffusion_model", label: "Kontext model (models/diffusion_models)", model: "Flux Kontext · Local", folder: "diffusion_models", hint: "flux1-dev-kontext_fp8_scaled.safetensors" },
+  { field: "kontext_clip_l", label: "CLIP-L text encoder (models/text_encoders)", model: "Flux Kontext · Local", folder: "text_encoders", hint: "clip_l.safetensors" },
+  { field: "kontext_t5xxl", label: "T5-XXL text encoder (models/text_encoders)", model: "Flux Kontext · Local", folder: "text_encoders", hint: "t5xxl_fp8_e4m3fn_scaled.safetensors" },
+  { field: "kontext_vae", label: "VAE (models/vae)", model: "Flux Kontext · Local", folder: "vae_files", hint: "ae.safetensors" },
 ];
 
 const INPUT_CLASS =
@@ -77,8 +103,6 @@ export const ComfyUiSettingsPane = () => {
     setSettings((current) => (current ? { ...current, [key]: value } : current));
   };
 
-  const installed = useMemo(() => new Set(connection?.checkpoints ?? []), [connection]);
-
   if (!settings) {
     return (
       <div className="space-y-4 pt-3 text-base-fg">
@@ -91,7 +115,7 @@ export const ComfyUiSettingsPane = () => {
     <div className="space-y-4 pt-3 text-base-fg">
       <p className="text-xs opacity-70">
         Generate images for free on your own graphics card. The local models
-        (Flux Schnell, Flux Dev and SDXL, marked “Local”) run on a ComfyUI
+        (Flux Schnell, Flux Dev, Flux Kontext and SDXL, marked “Local”) run on a ComfyUI
         server on this computer or your network. Results go to your library
         like any other generation. With a canvas, 3D scene or reference image
         they start from that image.
@@ -125,35 +149,35 @@ export const ComfyUiSettingsPane = () => {
             checkpoints from Comfy-Org load directly.
           </p>
         </div>
-        {CHECKPOINT_FIELDS.map(({ field, model, hint }) => (
-          <div key={field} className="flex flex-col gap-1">
-            <Label htmlFor={`comfyui-${field}`}>{model}</Label>
-            {connection && connection.checkpoints.length > 0 ? (
-              <div className="max-w-md">
-                <Select
-                  id={`comfyui-${field}`}
-                  value={settings[field]}
-                  options={checkpointOptions(connection.checkpoints, settings[field])}
-                  onChange={(value) => update(field, String(value))}
-                />
-              </div>
-            ) : (
-              <input
-                id={`comfyui-${field}`}
-                type="text"
-                value={settings[field]}
-                onChange={(event) => update(field, event.target.value)}
-                placeholder={hint}
-                spellCheck={false}
-                className={INPUT_CLASS}
-              />
-            )}
-            {connection && !installed.has(settings[field]) && (
-              <p className="text-xs text-amber-400">
-                ComfyUI doesn't have this file. {model} will fail until you add it or pick another file.
-              </p>
-            )}
-          </div>
+        {CHECKPOINT_FIELDS.map((spec) => (
+          <ModelFileInput
+            key={spec.field}
+            spec={spec}
+            value={settings[spec.field]}
+            connection={connection}
+            onChange={(value) => update(spec.field, value)}
+          />
+        ))}
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-3 border-0 p-0">
+        <div className="flex flex-col gap-0.5">
+          <Label>Flux Kontext · Local (edit and fuse images)</Label>
+          <p className="text-xs opacity-70">
+            Kontext follows instructions like “put the person from image 1 in
+            the place from image 2”. It uses four separate files from ComfyUI's
+            Kontext template, each in its own models folder. Its license is
+            non-commercial.
+          </p>
+        </div>
+        {KONTEXT_FIELDS.map((spec) => (
+          <ModelFileInput
+            key={spec.field}
+            spec={spec}
+            value={settings[spec.field]}
+            connection={connection}
+            onChange={(value) => update(spec.field, value)}
+          />
         ))}
       </fieldset>
 
@@ -187,6 +211,48 @@ export const ComfyUiSettingsPane = () => {
         {saveMessage && <p className="text-xs opacity-70">{saveMessage}</p>}
       </div>
       {saveError && <p role="alert" className="text-xs text-red-400">{saveError}</p>}
+    </div>
+  );
+};
+
+// A select of the files ComfyUI has in the right folder once connected, or a
+// text box before that. Warns when the chosen file isn't installed.
+const ModelFileInput = ({
+  spec,
+  value,
+  connection,
+  onChange,
+}: {
+  spec: ModelFileSpec;
+  value: string;
+  connection: ComfyUiConnectionInfo | undefined;
+  onChange: (value: string) => void;
+}) => {
+  const id = `comfyui-${spec.field}`;
+  const installed = useMemo(() => connection?.[spec.folder] ?? [], [connection, spec.folder]);
+  return (
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={id}>{spec.label}</Label>
+      {installed.length > 0 ? (
+        <div className="max-w-md">
+          <Select id={id} value={value} options={fileOptions(installed, value)} onChange={(next) => onChange(String(next))} />
+        </div>
+      ) : (
+        <input
+          id={id}
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={spec.hint}
+          spellCheck={false}
+          className={INPUT_CLASS}
+        />
+      )}
+      {connection && !installed.includes(value) && (
+        <p className="text-xs text-amber-400">
+          ComfyUI doesn't have this file. {spec.model} will fail until you add it or pick another file.
+        </p>
+      )}
     </div>
   );
 };
@@ -235,7 +301,7 @@ const describeDevice = (name: string, vramGib?: number | null): string => {
   return vramGib ? `${cleaned} (${vramGib} GB)` : cleaned;
 };
 
-const checkpointOptions = (installed: string[], current: string) => {
+const fileOptions = (installed: string[], current: string) => {
   const options = installed.map((name) => ({ label: name, value: name }));
   if (current && !installed.includes(current)) {
     options.unshift({ label: `${current} (not found)`, value: current });

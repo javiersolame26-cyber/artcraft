@@ -53,6 +53,8 @@ import { useSceneStore } from "@storyteller/ui-pagedraw";
 import { usePageSceneStore } from "@storyteller/ui-pagescene";
 import { useImageTo3DStore } from "~/pages/PageImageTo3DObject/ImageTo3DStore";
 import { useImageTo3DWorldStore } from "~/pages/PageImageTo3DWorld/ImageTo3DWorldStore";
+import { useFuseStore } from "~/pages/PageFuse/FuseStore";
+import { toast } from "@storyteller/ui-toaster";
 import { useRemoveBackgroundStore } from "~/pages/PageRemoveBackground/RemoveBackgroundStore";
 import { TabId, useTabStore } from "~/pages/Stores/TabState";
 import { AUTH_STATUS } from "~/enums";
@@ -346,6 +348,16 @@ export const TopBar = ({ pageName }: Props) => {
     }
   };
 
+  const handleFuseFromGallery = async (url: string, mediaId?: string) => {
+    if (mediaId && !useFuseStore.getState().attachLibraryImage({ mediaToken: mediaId, url })) {
+      toast.error("Fuse already has 4 images. Remove one first.");
+    }
+    useTabStore.getState().setActiveTab("FUSE");
+    galleryModalVisibleViewMode.value = false;
+    galleryModalVisibleDuringDrag.value = false;
+    galleryModalLightboxVisible.value = false;
+  };
+
   const getPageCrumbs = (): string[] => {
     switch (tabStore.activeTabId) {
       case "2D":
@@ -382,6 +394,8 @@ export const TopBar = ({ pageName }: Props) => {
         return ["Studio", "Edit Video"];
       case "MOODBOARD":
         return ["Studio", "Moodboard"];
+      case "FUSE":
+        return ["Create", "Fuse"];
       case "APPS":
         return ["Home"];
       default:
@@ -709,6 +723,7 @@ export const TopBar = ({ pageName }: Props) => {
         onRemoveBackgroundClicked={handleRemoveBackgroundFromGallery}
         onMake3DObjectClicked={handleMake3DObjectFromGallery}
         onMake3DWorldClicked={handleMake3DWorldFromGallery}
+        onFuseClicked={handleFuseFromGallery}
         onRecreateClicked={handleRecreateFromGallery}
         onDeleteMedia={galleryModalDeleteMedia}
         subscribeToMediaEvents={galleryModalSubscribeToMediaEvents}

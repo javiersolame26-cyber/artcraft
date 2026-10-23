@@ -37,6 +37,9 @@ pub async fn handle_classic_failed_generations(
         service: GenerationServiceProvider::Sora,
         model: None,
         reason: task.reason.clone(),
+        maybe_frontend_subscriber_id: local_sqlite_tasks_by_sora_task_id
+          .get(task_id.as_str())
+          .and_then(|local_task| local_task.frontend_subscriber_id.clone()),
       };
 
       event.send_infallible(&app_handle);

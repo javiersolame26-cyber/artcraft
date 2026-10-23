@@ -1,5 +1,7 @@
 import { ModelCreator } from "./ModelCreator.js";
 
+export const LOCAL_MODELS_FAMILY = "Local · Your GPU";
+
 // Model-id-prefix → family display name, used to group the model picker into
 // submenus ("Seedance", "Veo", ...). Matched in order against both canonical
 // and tauri id forms (they share prefixes), so keep more specific prefixes
@@ -15,7 +17,10 @@ const MODEL_ID_PREFIX_FAMILIES: Array<[string, string]> = [
   ["happy_horse", "Happy Horse"],
   ["wan", "Wan"],
   ["vidu", "Vidu"],
-  // ── Image ── (flux also covers the Flux 3 video model)
+  // ── Image ──
+  // Models that run on the user's own GPU through ComfyUI, whatever their family.
+  ["comfyui_", LOCAL_MODELS_FAMILY],
+  // flux also covers the Flux 3 video model.
   ["flux", "Flux"],
   ["seedream", "Seedream"],
   ["seededit", "SeedEdit"],
@@ -52,7 +57,8 @@ export const FAMILY_ORDER: string[] = [
   "Vidu",
   "Happy Horse",
   "Wan",
-  // Image families.
+  // Image families. Local (free) models first so they are easy to find.
+  LOCAL_MODELS_FAMILY,
   "Nano Banana",
   "Seedream",
   "GPT Image",

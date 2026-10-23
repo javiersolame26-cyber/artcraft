@@ -88,15 +88,27 @@ pub enum TauriImageModel {
   ComfyUiFlux1Dev,
   #[serde(rename = "comfyui_sdxl")]
   ComfyUiSdxl,
+  #[serde(rename = "comfyui_flux_kontext")]
+  ComfyUiFluxKontext,
+}
+
+/// How a local model runs on ComfyUI.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ComfyUiWorkflow {
+  /// An all-in-one checkpoint: text to image, or image to image from one start image.
+  Checkpoint(ModelFamily),
+  /// FLUX.1 Kontext [dev]: instruction edits and fusion of several reference images.
+  Kontext,
 }
 
 impl TauriImageModel {
-  /// The local ComfyUI checkpoint family for this model, if it is a local model.
-  pub fn comfyui_family(self) -> Option<ModelFamily> {
+  /// The ComfyUI workflow for this model, if it is a local model.
+  pub fn comfyui_workflow(self) -> Option<ComfyUiWorkflow> {
     match self {
-      Self::ComfyUiFlux1Schnell => Some(ModelFamily::FluxSchnell),
-      Self::ComfyUiFlux1Dev => Some(ModelFamily::FluxDev),
-      Self::ComfyUiSdxl => Some(ModelFamily::Sdxl),
+      Self::ComfyUiFlux1Schnell => Some(ComfyUiWorkflow::Checkpoint(ModelFamily::FluxSchnell)),
+      Self::ComfyUiFlux1Dev => Some(ComfyUiWorkflow::Checkpoint(ModelFamily::FluxDev)),
+      Self::ComfyUiSdxl => Some(ComfyUiWorkflow::Checkpoint(ModelFamily::Sdxl)),
+      Self::ComfyUiFluxKontext => Some(ComfyUiWorkflow::Kontext),
       _ => None,
     }
   }

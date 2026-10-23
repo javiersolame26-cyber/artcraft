@@ -30,9 +30,12 @@ const localImageModel = (args: {
   selectorName: string;
   selectorDescription: string;
   progressBarTime: number;
+  maxGenerationCount?: number;
+  maxImagePromptCount?: number;
+  defaultAspectRatio?: CommonAspectRatio;
+  aspectRatios?: CommonAspectRatio[];
 }) =>
   new ImageModel({
-    ...args,
     tauriId: args.id,
     category: "image",
     providers: [GenerationProvider.ComfyUi],
@@ -48,7 +51,12 @@ const localImageModel = (args: {
     canChangeAspectRatio: true,
     defaultAspectRatio: CommonAspectRatio.Square,
     aspectRatios: LOCAL_ASPECT_RATIOS,
+    ...args,
   });
+
+// Flux Kontext fuses up to four images; "Auto" keeps the first image's shape.
+export const LOCAL_KONTEXT_MODEL_ID = "comfyui_flux_kontext";
+export const LOCAL_KONTEXT_MAX_IMAGES = 4;
 
 export const IMAGE_MODELS: ImageModel[] = [
   new ImageModel({
@@ -737,6 +745,18 @@ export const IMAGE_MODELS: ImageModel[] = [
     selectorName: "Flux Dev · Local",
     selectorDescription: "Free on your own GPU. Higher quality, slower",
     progressBarTime: 60000,
+  }),
+  localImageModel({
+    id: LOCAL_KONTEXT_MODEL_ID,
+    fullName: "Flux Kontext (Local)",
+    creator: ModelCreator.BlackForestLabs,
+    selectorName: "Flux Kontext · Local",
+    selectorDescription: "Free on your own GPU. Edits and fuses up to 4 images from an instruction",
+    progressBarTime: 90000,
+    maxGenerationCount: 2,
+    maxImagePromptCount: LOCAL_KONTEXT_MAX_IMAGES,
+    defaultAspectRatio: CommonAspectRatio.Auto,
+    aspectRatios: [CommonAspectRatio.Auto, ...LOCAL_ASPECT_RATIOS],
   }),
   localImageModel({
     id: "comfyui_sdxl",

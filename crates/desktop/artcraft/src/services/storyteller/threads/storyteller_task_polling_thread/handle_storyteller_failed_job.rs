@@ -45,6 +45,7 @@ pub async fn handle_failed_job(
     service,
     model: task.model_type.as_ref().map(|model| GenerationModel::Unknown(model.to_str().to_owned())),
     reason: None,
+    maybe_frontend_subscriber_id: task.frontend_subscriber_id.clone(),
   };
 
   event.send_infallible(app_handle);

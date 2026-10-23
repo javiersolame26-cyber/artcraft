@@ -38,5 +38,6 @@ pub fn tauri_image_model_to_enums_model(model: TauriImageModel) -> Option<Common
     TauriImageModel::ComfyUiFlux1Schnell => None,
     TauriImageModel::ComfyUiFlux1Dev => None,
     TauriImageModel::ComfyUiSdxl => None,
+    TauriImageModel::ComfyUiFluxKontext => None,
   }
 }

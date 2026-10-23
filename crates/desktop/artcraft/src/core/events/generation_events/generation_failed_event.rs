@@ -12,6 +12,10 @@ pub struct GenerationFailedEvent {
 
   /// User-facing reason for the failure, if available.
   pub reason: Option<String>,
+
+  /// The id the page that started the job gave it, so that page can tell
+  /// which of its jobs failed.
+  pub maybe_frontend_subscriber_id: Option<String>,
 }
 
 impl BasicSendableEvent for GenerationFailedEvent {
